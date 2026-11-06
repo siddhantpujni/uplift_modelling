@@ -1,4 +1,4 @@
-"""Causal and uplift evaluation metrics used in the first milestone."""
+"""Causal and uplift evaluation metrics."""
 
 from collections.abc import Sequence
 

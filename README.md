@@ -12,9 +12,10 @@ Criteo randomised experiment. `conversion` is the primary outcome and `visit`
 is a secondary outcome. I will first test and develop using 10% of the 14M row criteo dataset to reduce computational time and then move to the full dataset after the pipeline is validated.
 
 The repository is deliberately structured as a small Python package rather
-than a notebook-only analysis. Reusable analysis code will be under [`src/`](src),
-tests will be under [`tests/`](tests), and GitHub Actions runs linting and tests on
-every push and pull request. Notebooks are used for general testing and results before full implementation.
+than a notebook-only analysis. Reusable analysis code is under [`src/`](src),
+tests are under [`tests/`](tests), and GitHub Actions runs linting, coverage,
+tests, and package builds on every push and pull request. Notebooks are used
+for narrative exploration and results, not as the only place where logic exists.
 
 ## Local setup
 
@@ -43,5 +44,21 @@ python scripts/run_baseline_analysis.py /path/to/criteo-uplift-v2.1.csv \
 ```
 
 The generated report directory is intentionally ignored by Git. It contains
-the balance table, uplift curve, and a JSON summary that can be attached to a
-project write-up or published as a CI artifact later.
+the balance table, uplift, response, and random-targeting curves, and a JSON
+summary that can be attached to a project write-up.
+
+## CI/CD workflows
+
+- **CI** tests Python 3.10, 3.11, and 3.12, checks coverage, linting, and builds
+  wheel/source distributions.
+- **Full analysis** is manually triggered from GitHub Actions. Supply a
+  downloadable dataset URL, or adapt the workflow for a private/self-hosted
+  runner. Leave `nrows` blank for the full dataset; use a value such as
+  `200000` for a bounded development run. Reports are uploaded as artifacts.
+- **Release** runs on tags such as `v0.2.0`, reruns quality checks, builds the
+  distributions, and attaches them to a GitHub Release.
+- **Dependabot** checks Python and GitHub Actions dependencies monthly.
+
+For pull requests, repository settings should require the `test-and-lint`
+check before merging into `main`. The full-data workflow is intentionally not
+part of pull-request CI because the dataset and model runs are expensive.

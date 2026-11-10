@@ -1,0 +1,51 @@
+name: Full analysis
+
+on:
+  workflow_dispatch:
+    inputs:
+      dataset_url:
+        description: "HTTPS URL for the Criteo CSV; leave blank to use a self-hosted runner path."
+        required: false
+        type: string
+      nrows:
+        description: "Optional bounded row count; leave blank for the full dataset."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -e .
+      - name: Download dataset
+        if: ${{ inputs.dataset_url != '' }}
+        run: curl --fail --location --retry 3 --output criteo-uplift.csv "${{ inputs.dataset_url }}"
+      - name: Require dataset
+        run: |
+          if [ ! -f criteo-uplift.csv ]; then
+            echo "No dataset available. Provide dataset_url or adapt this workflow for a private runner."
+            exit 1
+          fi
+      - name: Run analysis
+        run: |
+          if [ -n "${{ inputs.nrows }}" ]; then
+            python scripts/run_baseline_analysis.py criteo-uplift.csv \
+              --nrows "${{ inputs.nrows }}" --output-dir reports/full-analysis
+          else
+            python scripts/run_baseline_analysis.py criteo-uplift.csv \
+              --output-dir reports/full-analysis
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uplift-analysis-report
+          path: reports/full-analysis/

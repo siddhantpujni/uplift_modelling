@@ -27,3 +27,7 @@ class TLearner:
 
     def predict_uplift(self, X: pd.DataFrame) -> np.ndarray:
         return self._treated.predict_proba(X)[:, 1] - self._control.predict_proba(X)[:, 1]
+
+    def predict_treated_response(self, X: pd.DataFrame) -> np.ndarray:
+        """Predict response probability under treatment for response targeting."""
+        return self._treated.predict_proba(X)[:, 1]

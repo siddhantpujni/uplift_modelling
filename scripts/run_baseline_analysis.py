@@ -13,6 +13,8 @@ from uplift_modelling.metrics import (
     auuc,
     balance_table,
     bootstrap_ate,
+    bootstrap_auuc,
+    random_curve,
     uplift_curve,
 )
 from uplift_modelling.models import TLearner
@@ -60,11 +62,18 @@ def main() -> None:
         train[FEATURE_COLUMNS], train["treatment"], train["conversion"]
     )
     test_uplift = learner.predict_uplift(test[FEATURE_COLUMNS])
+    test_response = learner.predict_treated_response(test[FEATURE_COLUMNS])
     curve = uplift_curve(test["conversion"], test["treatment"], test_uplift)
+    response_curve = uplift_curve(test["conversion"], test["treatment"], test_response)
+    random_targeting = random_curve(
+        test["conversion"], test["treatment"], random_state=args.random_state
+    )
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     balance_table(data, FEATURE_COLUMNS).to_csv(args.output_dir / "balance.csv", index=False)
     curve.to_csv(args.output_dir / "uplift_curve.csv", index=False)
+    response_curve.to_csv(args.output_dir / "response_curve.csv", index=False)
+    random_targeting.to_csv(args.output_dir / "random_curve.csv", index=False)
     results = {
         "rows": len(data),
         "treatment_rate": float(data["treatment"].mean()),
@@ -75,6 +84,21 @@ def main() -> None:
             random_state=args.random_state,
         ),
         "auuc_conversion": auuc(curve),
+        "auuc": {
+            "t_learner": bootstrap_auuc(
+                test["conversion"],
+                test["treatment"],
+                test_uplift,
+                n_bootstrap=500,
+                random_state=args.random_state,
+            ),
+            "response_targeting": {
+                "estimate": auuc(response_curve),
+            },
+            "random_targeting": {
+                "estimate": auuc(random_targeting),
+            },
+        },
     }
     (args.output_dir / "summary.json").write_text(json.dumps(results, indent=2) + "\n")
     print(json.dumps(results, indent=2))

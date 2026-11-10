@@ -46,6 +46,9 @@ def validate_criteo_data(data: pd.DataFrame) -> None:
         if not values <= {0, 1}:
             raise ValueError(f"{column} must be binary, found values: {sorted(values)}")
 
+    if data["treatment"].nunique() != 2:
+        raise ValueError("treatment must contain both treated and control observations.")
+
     if not (data["conversion"] <= data["visit"]).all():
         raise ValueError("Conversion must not be one when visit is zero.")
 

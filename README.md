@@ -29,6 +29,19 @@ pytest
 ruff check .
 ```
 
+Use the same `python` command for installation and execution. If you see
+`ModuleNotFoundError: No module named 'uplift_modelling'`, the package was
+installed into a different interpreter (or not installed yet). From the
+repository root, repair the environment with:
+
+```bash
+python -m pip install -e .
+python -c "import uplift_modelling; print(uplift_modelling.__file__)"
+```
+
+The second command should print a path ending in
+`src/uplift_modelling/__init__.py`.
+
 The analysis package now includes T-, X-, R-, and doubly robust learners, a
 cross-fitted DR learner, a dependency-light causal-forest baseline, a
 PyTorch shared-trunk/treatment-head network, split-conformal CATE intervals,

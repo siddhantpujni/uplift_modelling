@@ -67,9 +67,40 @@ python scripts/run_baseline_analysis.py /path/to/criteo-uplift-v2.1.csv \
   --nrows 200000 --models torch --epochs 30
 ```
 
-The generated report directory is intentionally ignored by Git. It contains
-the balance table, per-model uplift curves, the random-targeting curve, and a
-JSON summary that can be attached to a project write-up.
+The generated report directory is intentionally ignored by Git. It contains the balance table, per-model uplift curves, the random-targeting curve, and a JSON summary that can be attached to a project write-up.
+
+## Running the analysis in Docker
+
+Docker is useful here when you want the same Python and dependency environment on a laptop, CI runner, or another machine. The dataset and generated reports stay outside the image and are mounted at runtime:
+
+```bash
+docker build -t uplift-modelling .
+mkdir -p reports/docker-baseline
+docker run --rm \
+  -v /path/to/data:/data:ro \
+  -v "$PWD/reports/docker-baseline:/reports" \
+  uplift-modelling \
+  /data/criteo-uplift-v2.1.csv \
+  --nrows 200000 \
+  --models t,x,r,dr,forest \
+  --bootstrap-reps 500 \
+  --output-dir /reports
+```
+
+The image intentionally contains the CPU/scikit-learn dependencies only.
+Build a separate image or extend the Dockerfile with the `ml` extra if you
+want to run the optional PyTorch model:
+
+```dockerfile
+RUN python -m pip install ".[ml]"
+```
+
+Kubernetes is not needed for a single analysis run. Consider a Kubernetes
+`Job` only when you have a cluster and need repeatable scheduled runs,
+multiple model/data experiments, resource limits, or queued workloads. In that
+case, publish this image to a registry, mount the dataset through object
+storage or a persistent volume, and write reports to object storage rather
+than relying on a local bind mount.
 
 ## Running the full 14M-row dataset
 
@@ -85,11 +116,7 @@ python scripts/run_baseline_analysis.py "$DATA" \
   --output-dir reports/criteo-full
 ```
 
-This command uses all rows because `--nrows` is omitted. The reduced
-bootstrap count and forest size are deliberate runtime controls for the
-14M-row run; they do not change the estimators. Run it from a machine with
-substantial free memory and expect the forest-based learners to take much
-longer than the T-learner.
+This command uses all rows because `--nrows` is omitted. The reduced bootstrap count and forest size are deliberate runtime controls for the 14M-row run; they do not change the estimators. Run it from a machine with substantial free memory and expect the forest-based learners to take much longer than the T-learner.
 
 When the command finishes, inspect:
 
@@ -104,14 +131,9 @@ reports/criteo-full/dr_uplift_curve.csv
 reports/criteo-full/forest_uplift_curve.csv
 ```
 
-`summary.json` contains the full-data row count, treatment rate, conversion
-ATE and bootstrap interval, each model's AUUC interval, conformal radius,
-interval width, and empirical test coverage. The curve files can be plotted
-against `fraction_targeted` and `incremental_gain` to produce the Qini-style
-figures for the report.
+`summary.json` contains the full-data row count, treatment rate, conversion ATE and bootstrap interval, each model's AUUC interval, conformal radius, interval width, and empirical test coverage. The curve files can be plotted against `fraction_targeted` and `incremental_gain` to produce the Qini-style figures for the report.
 
-The PyTorch model should be run as a separate experiment rather than alongside
-the five scikit-learn models:
+The PyTorch model should be run as a separate experiment rather than alongside the five scikit-learn models:
 
 ```bash
 python -m pip install -e ".[ml]"
@@ -120,25 +142,14 @@ python scripts/run_baseline_analysis.py "$DATA" \
   --output-dir reports/criteo-full-torch
 ```
 
-For a first full-data run, use the scikit-learn command above. If it is too
-slow or memory-intensive, reduce `--n-estimators` further or run
-`--models t,x,dr` first; the output format remains the same. Do not compare
-metrics from different holdout definitions as if they were one experiment:
-each invocation creates its own deterministic 75% training, 12.5% calibration,
+For a first full-data run, use the scikit-learn command above. If it is too slow or memory-intensive, reduce `--n-estimators` further or run `--models t,x,dr` first; the output format remains the same. Do not compare metrics from different holdout definitions as if they were one experiment: each invocation creates its own deterministic 75% training, 12.5% calibration,
 and 12.5% test split using `--random-state 42`.
 
 ## CI/CD workflows
 
-- **CI** tests Python 3.10, 3.11, and 3.12, checks coverage, linting, and builds
-  wheel/source distributions.
-- **Full analysis** is manually triggered from GitHub Actions. Supply a
-  downloadable dataset URL, or adapt the workflow for a private/self-hosted
-  runner. Leave `nrows` blank for the full dataset; use a value such as
-  `200000` for a bounded development run. Reports are uploaded as artifacts.
-- **Release** runs on tags such as `v0.2.0`, reruns quality checks, builds the
-  distributions, and attaches them to a GitHub Release.
+- **CI** tests Python 3.10, 3.11, and 3.12, checks coverage, linting, and builds wheel/source distributions.
+- **Full analysis** is manually triggered from GitHub Actions. Supply a downloadable dataset URL, or adapt the workflow for a private/self-hosted runner. Leave `nrows` blank for the full dataset; use a value such as `200000` for a bounded development run. Reports are uploaded as artifacts.
+- **Release** runs on tags such as `v0.2.0`, reruns quality checks, builds the distributions, and attaches them to a GitHub Release.
 - **Dependabot** checks Python and GitHub Actions dependencies monthly.
 
-For pull requests, repository settings should require the `test-and-lint`
-check before merging into `main`. The full-data workflow is intentionally not
-part of pull-request CI because the dataset and model runs are expensive.
+For pull requests, repository settings should require the `test-and-lint` check before merging into `main`. The full-data workflow is intentionally not part of pull-request CI because the dataset and model runs are expensive.

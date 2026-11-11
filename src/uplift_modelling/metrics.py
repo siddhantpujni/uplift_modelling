@@ -117,7 +117,7 @@ def auuc(curve: pd.DataFrame) -> float:
     required = {"incremental_gain", "fraction_targeted"}
     if not required <= set(curve.columns):
         raise ValueError(f"curve must contain columns: {sorted(required)}")
-    return float(np.trapz(curve["incremental_gain"], curve["fraction_targeted"]))
+    return float(np.trapezoid(curve["incremental_gain"], curve["fraction_targeted"]))
 
 
 def response_curve(

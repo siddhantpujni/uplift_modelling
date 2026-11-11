@@ -42,6 +42,7 @@ To run the first milestone against a local download:
 python scripts/run_baseline_analysis.py /path/to/criteo-uplift-v2.1.csv \
   --nrows 200000 \
   --models t,x,r,dr,forest \
+  --bootstrap-reps 500 \
   --output-dir reports/baseline
 ```
 
@@ -54,8 +55,64 @@ python scripts/run_baseline_analysis.py /path/to/criteo-uplift-v2.1.csv \
 ```
 
 The generated report directory is intentionally ignored by Git. It contains
-the balance table, uplift, response, and random-targeting curves, and a JSON
-summary that can be attached to a project write-up.
+the balance table, per-model uplift curves, the random-targeting curve, and a
+JSON summary that can be attached to a project write-up.
+
+## Running the full 14M-row dataset
+
+The local full dataset can be run directly:
+
+```bash
+DATA=/home/sid/.cache/kagglehub/datasets/arashnic/uplift-modeling/versions/1/criteo-uplift-v2.1.csv
+
+python scripts/run_baseline_analysis.py "$DATA" \
+  --models t,x,r,dr,forest \
+  --n-estimators 25 \
+  --bootstrap-reps 100 \
+  --output-dir reports/criteo-full
+```
+
+This command uses all rows because `--nrows` is omitted. The reduced
+bootstrap count and forest size are deliberate runtime controls for the
+14M-row run; they do not change the estimators. Run it from a machine with
+substantial free memory and expect the forest-based learners to take much
+longer than the T-learner.
+
+When the command finishes, inspect:
+
+```text
+reports/criteo-full/summary.json
+reports/criteo-full/balance.csv
+reports/criteo-full/random_curve.csv
+reports/criteo-full/t_uplift_curve.csv
+reports/criteo-full/x_uplift_curve.csv
+reports/criteo-full/r_uplift_curve.csv
+reports/criteo-full/dr_uplift_curve.csv
+reports/criteo-full/forest_uplift_curve.csv
+```
+
+`summary.json` contains the full-data row count, treatment rate, conversion
+ATE and bootstrap interval, each model's AUUC interval, conformal radius,
+interval width, and empirical test coverage. The curve files can be plotted
+against `fraction_targeted` and `incremental_gain` to produce the Qini-style
+figures for the report.
+
+The PyTorch model should be run as a separate experiment rather than alongside
+the five scikit-learn models:
+
+```bash
+python -m pip install -e ".[ml]"
+python scripts/run_baseline_analysis.py "$DATA" \
+  --models torch --epochs 10 --bootstrap-reps 100 \
+  --output-dir reports/criteo-full-torch
+```
+
+For a first full-data run, use the scikit-learn command above. If it is too
+slow or memory-intensive, reduce `--n-estimators` further or run
+`--models t,x,dr` first; the output format remains the same. Do not compare
+metrics from different holdout definitions as if they were one experiment:
+each invocation creates its own deterministic 75% training, 12.5% calibration,
+and 12.5% test split using `--random-state 42`.
 
 ## CI/CD workflows
 

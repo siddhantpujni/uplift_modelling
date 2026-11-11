@@ -73,6 +73,12 @@ def main() -> None:
     )
     parser.add_argument("--n-estimators", type=int, default=100)
     parser.add_argument("--epochs", type=int, default=30)
+    parser.add_argument(
+        "--bootstrap-reps",
+        type=int,
+        default=500,
+        help="Bootstrap repetitions for ATE and AUUC intervals.",
+    )
     args = parser.parse_args()
 
     data = (
@@ -121,7 +127,7 @@ def main() -> None:
                 test["conversion"],
                 test["treatment"],
                 test_uplift,
-                n_bootstrap=500,
+                n_bootstrap=args.bootstrap_reps,
                 random_state=args.random_state,
             ),
             "conformal_radius": float(interval.radius_),
@@ -136,7 +142,7 @@ def main() -> None:
         "ate_conversion": bootstrap_ate(
             data["conversion"],
             data["treatment"],
-            n_bootstrap=500,
+            n_bootstrap=args.bootstrap_reps,
             random_state=args.random_state,
         ),
         "auuc_random_targeting": auuc(random_targeting),

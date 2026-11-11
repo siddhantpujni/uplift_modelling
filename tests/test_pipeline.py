@@ -4,9 +4,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from uplift_modelling.conformal import SplitConformalCATE
 from uplift_modelling.constants import FEATURE_COLUMNS
 from uplift_modelling.data import load_criteo_csv, validate_criteo_data
-from uplift_modelling.models import TLearner
+from uplift_modelling.models import CausalForest, DRLearner, RLearner, TLearner, XLearner
 
 
 def synthetic_criteo_data(n_rows: int = 200) -> pd.DataFrame:
@@ -34,6 +35,47 @@ def test_synthetic_data_contract_and_t_learner():
     )
     predictions = learner.predict_uplift(data[FEATURE_COLUMNS])
     assert predictions.shape == (len(data),)
+    assert np.isfinite(predictions).all()
+
+
+@pytest.mark.parametrize("learner_class", [XLearner, RLearner, DRLearner, CausalForest])
+def test_advanced_learners_predict_finite_uplift(learner_class):
+    data = synthetic_criteo_data()
+    learner = learner_class(n_estimators=10).fit(
+        data[FEATURE_COLUMNS], data["treatment"], data["conversion"]
+    )
+    predictions = learner.predict_uplift(data[FEATURE_COLUMNS])
+    assert predictions.shape == (len(data),)
+    assert np.isfinite(predictions).all()
+
+
+def test_split_conformal_interval_has_positive_width():
+    data = synthetic_criteo_data()
+    learner = TLearner(max_iter=10).fit(
+        data[FEATURE_COLUMNS], data["treatment"], data["conversion"]
+    )
+    interval = SplitConformalCATE(learner).fit(
+        data[FEATURE_COLUMNS], data["treatment"], data["conversion"]
+    )
+    lower, upper = interval.predict_interval(data[FEATURE_COLUMNS].head(5))
+    assert np.all(upper >= lower)
+    assert interval.radius_ is not None
+    coverage = interval.empirical_coverage(
+        data[FEATURE_COLUMNS], data["treatment"], data["conversion"]
+    )
+    assert 0 <= coverage <= 1
+
+
+def test_torch_uplift_network_predicts_when_torch_is_available():
+    pytest.importorskip("torch")
+    from uplift_modelling.models import TorchUpliftNetwork
+
+    data = synthetic_criteo_data()
+    learner = TorchUpliftNetwork(epochs=2, hidden_dim=8).fit(
+        data[FEATURE_COLUMNS], data["treatment"], data["conversion"]
+    )
+    predictions = learner.predict_uplift(data[FEATURE_COLUMNS].head(5))
+    assert predictions.shape == (5,)
     assert np.isfinite(predictions).all()
 
 

@@ -15,6 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["build>=1.2", "pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.6"]
+ml = ["torch>=2.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

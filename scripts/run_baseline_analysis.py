@@ -4,9 +4,11 @@ import argparse
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
+from uplift_modelling.conformal import SplitConformalCATE
 from uplift_modelling.constants import FEATURE_COLUMNS, REQUIRED_COLUMNS
 from uplift_modelling.data import load_criteo_csv
 from uplift_modelling.metrics import (
@@ -17,7 +19,23 @@ from uplift_modelling.metrics import (
     random_curve,
     uplift_curve,
 )
-from uplift_modelling.models import TLearner
+from uplift_modelling.models import (
+    CausalForest,
+    DRLearner,
+    RLearner,
+    TLearner,
+    TorchUpliftNetwork,
+    XLearner,
+)
+
+MODEL_CLASSES = {
+    "t": TLearner,
+    "x": XLearner,
+    "r": RLearner,
+    "dr": DRLearner,
+    "forest": CausalForest,
+    "torch": TorchUpliftNetwork,
+}
 
 
 def load_stratified_slice(path: Path, nrows: int, random_state: int) -> pd.DataFrame:
@@ -48,6 +66,13 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=Path("reports/baseline"))
     parser.add_argument("--nrows", type=int, default=None)
     parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument(
+        "--models",
+        default="t,x,r,dr,forest",
+        help="Comma-separated models: t,x,r,dr,forest,torch.",
+    )
+    parser.add_argument("--n-estimators", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=30)
     args = parser.parse_args()
 
     data = (
@@ -58,22 +83,53 @@ def main() -> None:
     train, test = train_test_split(
         data, test_size=0.25, random_state=args.random_state, stratify=data["treatment"]
     )
-    learner = TLearner(random_state=args.random_state).fit(
-        train[FEATURE_COLUMNS], train["treatment"], train["conversion"]
+    calibration, test = train_test_split(
+        test, test_size=0.5, random_state=args.random_state, stratify=test["treatment"]
     )
-    test_uplift = learner.predict_uplift(test[FEATURE_COLUMNS])
-    test_response = learner.predict_treated_response(test[FEATURE_COLUMNS])
-    curve = uplift_curve(test["conversion"], test["treatment"], test_uplift)
-    response_curve = uplift_curve(test["conversion"], test["treatment"], test_response)
-    random_targeting = random_curve(
-        test["conversion"], test["treatment"], random_state=args.random_state
-    )
+    requested_models = [name.strip() for name in args.models.split(",") if name.strip()]
+    unknown = sorted(set(requested_models) - set(MODEL_CLASSES))
+    if unknown:
+        raise ValueError(f"Unknown models: {unknown}. Choose from {sorted(MODEL_CLASSES)}.")
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     balance_table(data, FEATURE_COLUMNS).to_csv(args.output_dir / "balance.csv", index=False)
-    curve.to_csv(args.output_dir / "uplift_curve.csv", index=False)
-    response_curve.to_csv(args.output_dir / "response_curve.csv", index=False)
+    random_targeting = random_curve(
+        test["conversion"], test["treatment"], random_state=args.random_state
+    )
     random_targeting.to_csv(args.output_dir / "random_curve.csv", index=False)
+    model_results = {}
+    for model_name in requested_models:
+        model_kwargs = {"random_state": args.random_state}
+        if model_name in {"x", "r", "dr", "forest"}:
+            model_kwargs["n_estimators"] = args.n_estimators
+        if model_name == "torch":
+            model_kwargs["epochs"] = args.epochs
+        learner = MODEL_CLASSES[model_name](**model_kwargs).fit(
+            train[FEATURE_COLUMNS], train["treatment"], train["conversion"]
+        )
+        test_uplift = learner.predict_uplift(test[FEATURE_COLUMNS])
+        curve = uplift_curve(test["conversion"], test["treatment"], test_uplift)
+        curve.to_csv(args.output_dir / f"{model_name}_uplift_curve.csv", index=False)
+        interval = SplitConformalCATE(learner).fit(
+            calibration[FEATURE_COLUMNS],
+            calibration["treatment"],
+            calibration["conversion"],
+        )
+        lower, upper = interval.predict_interval(test[FEATURE_COLUMNS])
+        model_results[model_name] = {
+            "auuc": bootstrap_auuc(
+                test["conversion"],
+                test["treatment"],
+                test_uplift,
+                n_bootstrap=500,
+                random_state=args.random_state,
+            ),
+            "conformal_radius": float(interval.radius_),
+            "conformal_interval_width": float(np.mean(upper - lower)),
+            "conformal_test_coverage": interval.empirical_coverage(
+                test[FEATURE_COLUMNS], test["treatment"], test["conversion"]
+            ),
+        }
     results = {
         "rows": len(data),
         "treatment_rate": float(data["treatment"].mean()),
@@ -83,22 +139,8 @@ def main() -> None:
             n_bootstrap=500,
             random_state=args.random_state,
         ),
-        "auuc_conversion": auuc(curve),
-        "auuc": {
-            "t_learner": bootstrap_auuc(
-                test["conversion"],
-                test["treatment"],
-                test_uplift,
-                n_bootstrap=500,
-                random_state=args.random_state,
-            ),
-            "response_targeting": {
-                "estimate": auuc(response_curve),
-            },
-            "random_targeting": {
-                "estimate": auuc(random_targeting),
-            },
-        },
+        "auuc_random_targeting": auuc(random_targeting),
+        "models": model_results,
     }
     (args.output_dir / "summary.json").write_text(json.dumps(results, indent=2) + "\n")
     print(json.dumps(results, indent=2))

@@ -29,18 +29,28 @@ pytest
 ruff check .
 ```
 
-The first milestone implements the validated data contract, covariate balance,
-bootstrap ATE confidence intervals, a T-learner baseline, and uplift-curve
-metrics. Subsequent milestones will add cross-fitting, richer learners,
-uncertainty for model comparisons, biased-sample experiments, and off-policy
-policy evaluation.
+The analysis package now includes T-, X-, R-, and doubly robust learners, a
+cross-fitted DR learner, a dependency-light causal-forest baseline, a
+PyTorch shared-trunk/treatment-head network, split-conformal CATE intervals,
+bootstrap AUUC uncertainty, and random-targeting benchmarks. The remaining
+research milestones are biased-sample sensitivity analysis and richer
+off-policy policy evaluation.
 
 To run the first milestone against a local download:
 
 ```bash
 python scripts/run_baseline_analysis.py /path/to/criteo-uplift-v2.1.csv \
   --nrows 200000 \
+  --models t,x,r,dr,forest \
   --output-dir reports/baseline
+```
+
+Add `--models torch` after installing the optional neural-network dependency:
+
+```bash
+python -m pip install -e ".[ml]"
+python scripts/run_baseline_analysis.py /path/to/criteo-uplift-v2.1.csv \
+  --nrows 200000 --models torch --epochs 30
 ```
 
 The generated report directory is intentionally ignored by Git. It contains

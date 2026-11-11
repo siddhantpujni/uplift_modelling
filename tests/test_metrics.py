@@ -29,7 +29,7 @@ def test_bootstrap_ate_is_reproducible():
 def test_balance_table_reports_absolute_smd():
     data = pd.DataFrame({"treatment": [0, 0, 1, 1], "feature": [0, 0, 2, 2]})
     result = balance_table(data, ["feature"])
-    assert result.loc[0, "absolute_smd"] > 0
+    assert float(result.loc[0, "absolute_smd"]) > 0
 
 
 def test_uplift_curve_contains_all_rows():

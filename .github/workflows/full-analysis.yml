@@ -45,7 +45,7 @@ jobs:
             python scripts/run_baseline_analysis.py criteo-uplift.csv \
               --output-dir reports/full-analysis
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: uplift-analysis-report
           path: reports/full-analysis/
